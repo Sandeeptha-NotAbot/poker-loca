@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@layer base {
+  :root { color-scheme: light; }      /* avoid dark-mode gray body */
+  body { margin: 0; background: transparent; }
+  #root { width: 100%; max-width: none; margin: 0; padding: 0; }
+}
