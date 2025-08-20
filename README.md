@@ -1,5 +1,5 @@
 # Poker Loca
-An interactive, beginner-friendly **Texas Hold’em trainer**. Learn the basics, see hand rankings, and practice with a mini “coach” that evaluates your cards each street and suggests an action.
+An interactive, beginner-friendly **Texas Hold’em trainer**. Learn the basics, see hand rankings, and practice with a mini “coach” that evaluates your cards each street and suggests an action. 
 
 ---
 
@@ -15,3 +15,5 @@ An interactive, beginner-friendly **Texas Hold’em trainer**. Learn the basics,
 - PostCSS (`@tailwindcss/postcss` plugin)
 
 ---
+
+-- Built by Sandee Madan 2025
