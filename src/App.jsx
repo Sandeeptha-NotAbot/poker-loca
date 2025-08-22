@@ -110,9 +110,9 @@ export default function PokerLoca() {
       {/* Navigation Menu as poker chips */}
       <div className="flex gap-6 mb-12">
         {[
-          { key: 'trainer', label: '🎲 Trainer', color: 'bg-red-500' },
-          { key: 'basics', label: '📘 Basics', color: 'bg-blue-500' },
-          { key: 'rankings', label: '🏆 Rankings', color: 'bg-green-500' }
+          { key: 'trainer', label: 'Trainer', color: 'bg-red-500' },
+          { key: 'basics', label: 'Basics', color: 'bg-blue-500' },
+          { key: 'rankings', label: 'Rankings', color: 'bg-green-500' }
         ].map(tab => (
           <button
             key={tab.key}
