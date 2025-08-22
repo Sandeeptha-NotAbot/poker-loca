@@ -1,378 +1,183 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 
-// ----- Card + Deck helpers -----
-const RANKS = ["2","3","4","5","6","7","8","9","T","J","Q","K","A"]; // T = Ten
-const SUITS = ["♠","♥","♦","♣"];
-const RANK_VALUE = Object.fromEntries(RANKS.map((r,i)=>[r, i+2]));
+export default function PokerLoca() {
+  // ---------------- UI STATE ----------------
+  const [hand, setHand] = useState([]);
+  const [board, setBoard] = useState([]);
+  const [step, setStep] = useState("preflop");
+  const [message, setMessage] = useState("Click 'Deal Hand' to start!");
+  const [page, setPage] = useState("trainer"); // menu control
 
-function makeDeck(){
-  const deck = [];
-  for(const s of SUITS){
-    for(const r of RANKS){
-      deck.push({ r, s, code: r + s, v: RANK_VALUE[r] });
+  // ---------------- DECK HELPERS ----------------
+  const suits = ["♠", "♥", "♦", "♣"];
+  const values = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+
+  function makeOrderedDeck(){
+    const deck = [];
+    for (const s of suits) {
+      for (const v of values) deck.push(v + s);
     }
-  }
-  return deck;
-}
-function shuffle(arr){
-  const a = [...arr];
-  for(let i=a.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i],a[j]] = [a[j],a[i]];
-  }
-  return a;
-}
-
-// Small utility
-const byDesc = (a,b)=>b-a;
-
-// Evaluate the best category from 7 cards (simple but solid)
-function evaluate7(cards){
-  // cards: array of {r,s,v}
-  const counts = new Map(); // rank -> count
-  const suitMap = new Map(); // suit -> cards
-  for(const c of cards){
-    counts.set(c.v, (counts.get(c.v)||0)+1);
-    (suitMap.get(c.s) || suitMap.set(c.s, []).get(c.s)).push(c);
+    return deck; // length 52
   }
 
-  // Build sorted arrays
-  const ranksDesc = [...counts.keys()].sort(byDesc);
-  const groups = ranksDesc.map(v=>({v, n: counts.get(v)})); // e.g., {v:14, n:2}
+  const newDeck = () => {
+    // Shuffled deck for gameplay
+    const deck = makeOrderedDeck();
+    return deck.sort(() => Math.random() - 0.5);
+  };
 
-  // Flush? (≥5 same suit)
-  let flushSuit = null; let flushCards = null;
-  for(const [s,arr] of suitMap.entries()){
-    if(arr.length >= 5){ flushSuit = s; flushCards = arr.sort((a,b)=>b.v-a.v); break; }
-  }
+  const [deck, setDeck] = useState(newDeck());
 
-  // Straight helper (from array of card values unique, desc)
-  function straightHigh(values){
-    // values: unique, desc
-    const uniq = [...new Set(values)].sort(byDesc);
-    // Add wheel (A-5): treat Ace as 1
-    if(uniq[0] === 14) uniq.push(1);
-    let run=1;
-    for(let i=0;i<uniq.length-1;i++){
-      if(uniq[i] - 1 === uniq[i+1]){ run++; if(run>=5) return uniq[i-3]; } else { run=1; }
-    }
-    return null; // no straight
-  }
+  // ---------------- GAME ACTIONS ----------------
+  const dealHand = () => {
+    const freshDeck = newDeck();
+    setHand([freshDeck[0], freshDeck[1]]);
+    setBoard([]);
+    setStep("flop");
+    setDeck(freshDeck.slice(2));
+    setMessage("Flop is next. What's your move?");
+  };
 
-  // Straight
-  const straightTop = straightHigh(cards.map(c=>c.v));
+  const dealFlop = () => {
+    setBoard(deck.slice(0,3));
+    setDeck(deck.slice(3));
+    setStep("turn");
+    setMessage("Turn card. Stay sharp!");
+  };
 
-  // Straight Flush
-  let sfTop = null;
-  if(flushSuit){
-    const flushVals = flushCards.map(c=>c.v);
-    sfTop = straightHigh(flushVals);
-  }
+  const dealTurn = () => {
+    setBoard(prev => [...prev, deck[0]]);
+    setDeck(deck.slice(1));
+    setStep("river");
+    setMessage("River time! Final card.");
+  };
 
-  // Tally for pairs/trips/quads
-  const quads = groups.find(g=>g.n===4);
-  const trips = groups.filter(g=>g.n===3);
-  const pairs = groups.filter(g=>g.n===2);
+  const dealRiver = () => {
+    setBoard(prev => [...prev, deck[0]]);
+    setDeck(deck.slice(1));
+    setStep("showdown");
+    setMessage("Showdown! Evaluate your hand.");
+  };
 
-  // Category rank order number + label
-  // 8 SF, 7 Quads, 6 FullHouse, 5 Flush, 4 Straight, 3 Trips, 2 TwoPair, 1 Pair, 0 High
-  if(sfTop) return { rank: 8, name: sfTop===14?"Royal Flush":"Straight Flush" };
-  if(quads) return { rank: 7, name: `Four of a Kind (${displayRank(quads.v)})` };
-  if(trips.length && (pairs.length || trips.length>1)){
-    // Full house: 3+2 or 3+3
-    const topTrip = trips[0];
-    const topPair = pairs[0] || trips[1];
-    return { rank: 6, name: `Full House (${displayRank(topTrip.v)} over ${displayRank(topPair.v)})` };
-  }
-  if(flushSuit) return { rank:5, name:`Flush (${flushSuit})` };
-  if(straightTop) return { rank:4, name:`Straight (high ${displayRank(straightTop)})` };
-  if(trips.length) return { rank:3, name:`Three of a Kind (${displayRank(trips[0].v)})` };
-  if(pairs.length>=2) return { rank:2, name:`Two Pair (${displayRank(pairs[0].v)} & ${displayRank(pairs[1].v)})` };
-  if(pairs.length===1) return { rank:1, name:`One Pair (${displayRank(pairs[0].v)})` };
-  const high = Math.max(...cards.map(c=>c.v));
-  return { rank:0, name:`High Card (${displayRank(high)})` };
-}
-
-function displayRank(v){
-  if(v===14) return "A"; if(v===13) return "K"; if(v===12) return "Q"; if(v===11) return "J"; if(v===10) return "10"; return String(v);
-}
-
-// Simple strategy hints
-function recommendAction(street, hole, board){
-  const cards = [...hole, ...board];
-  const evaln = evaluate7(cards);
-
-  const suitCounts = SUITS.map(s=>cards.filter(c=>c.s===s).length);
-  const hasFlushDraw = suitCounts.some(n=>n===4);
-
-  // crude straight-draw detector: any 4 within a 5-value window
-  const uniq = [...new Set(cards.map(c=>c.v))].sort(byDesc);
-  let hasStraightDraw = false;
-  if(uniq[0]===14) uniq.push(1);
-  for(let i=0;i<uniq.length;i++){
-    const base = uniq[i];
-    const window = new Set(uniq.filter(v=>v<=base && v>=base-4));
-    if(window.size>=4){ hasStraightDraw = true; break; }
-  }
-
-  // Preflop: starting hand table (very simplified)
-  if(street === "preflop"){
-    const [a,b] = hole.map(c=>c.v).sort((x,y)=>y-x);
-    const suited = hole[0].s === hole[1].s;
-    const connected = Math.abs(hole[0].v - hole[1].v) === 1;
-    const pair = a===b;
-
-    if(pair && a>=8) return { move:"Raise", reason:"Strong pair preflop (8s+)." };
-    if((a===14 && b>=10) || (a>=13 && b>=11)) return { move:"Raise", reason:"Two big cards play well." };
-    if(suited && connected && a>=10) return { move:"Call/Raise", reason:"Suited connectors have good potential." };
-    if(pair) return { move:"Call", reason:"Small pair can try to see a flop." };
-    return { move:"Fold", reason:"Weak starting hand—save chips." };
-  }
-
-  // Postflop rules based on category
-  if(evaln.rank>=3) return { move:"Bet", reason:`${evaln.name} is strong—bet about half the pot.` };
-  if(evaln.rank===2 || evaln.rank===1){
-    // One or two pair
-    return { move:"Bet/Check", reason:`${evaln.name}. Bet small if few players; otherwise check/call small.` };
-  }
-  if(hasFlushDraw || hasStraightDraw) return { move:"Check/Call Small", reason:"You have a draw—see the next card cheaply." };
-  return { move:"Check/Fold", reason:"Nothing yet—don’t invest chips without a hand." };
-}
-
-function Card({c, dim=false}){
-  if(!c) return null;
-  const isRed = c.s === "♥" || c.s === "♦";
-  return (
-    <div className={`w-12 h-16 rounded-2xl border bg-white flex flex-col items-center justify-center shadow ${dim?"opacity-60":""}`}>
-      <div className="text-sm font-semibold">{c.r}</div>
-      <div className={`text-xl ${isRed?"text-red-500":""}`}>{c.s}</div>
-    </div>
+  // ---------------- PRESENTATION ----------------
+  const Card = ({ card, index, small=false }) => (
+    <motion.div
+      key={index}
+      className={`${small ? 'w-10 h-16 text-lg' : 'w-16 h-24 text-2xl'} rounded-lg flex items-center justify-center font-bold shadow-md bg-white border ${card.includes("♥") || card.includes("♦") ? 'text-red-600' : 'text-black'}`}
+      initial={{ rotateY: 180, opacity: 0 }}
+      animate={{ rotateY: 0, opacity: 1 }}
+      transition={{ duration: 0.6, delay: index * 0.15 }}
+    >
+      {card}
+    </motion.div>
   );
-}
 
-function Pill({children}){
-  return <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-medium">{children}</span>;
-}
-
-function Section({title, children, right}){
-  return (
-    <div className="bg-white/70 backdrop-blur rounded-2xl shadow p-4 md:p-6 border">
-      <div className="flex items-center justify-between mb-3">
-      <h2 className="text-lg md:text-xl font-semibold text-slate-900">{title}</h2>
-        {right}
+  const RankingRow = ({ title, cards, description }) => (
+    <motion.div
+      className="flex items-center space-x-3 p-3 bg-black/40 rounded-xl shadow-md hover:bg-black/60 transition"
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <div className="flex space-x-1">
+        {cards.map((c, i) => <Card key={i} card={c} index={i} small={true} />)}
       </div>
-      {children}
-    </div>
-  );
-}
-
-export default function PokerLoca(){
-  const [tab, setTab] = useState("trainer");
-
-  // Game state
-  const [deck, setDeck] = useState(()=>shuffle(makeDeck()));
-  const [hole, setHole] = useState([]); // 2
-  const [board, setBoard] = useState([]); // up to 5
-  const [street, setStreet] = useState("prehand");
-
-  function freshHand(){
-    const d = shuffle(makeDeck());
-    const h = [d.pop(), d.pop()];
-    setDeck(d); setHole(h); setBoard([]); setStreet("preflop");
-  }
-  function nextStreet(){
-    const d = [...deck];
-    if(street === "preflop"){
-      // Flop (burn omitted for simplicity)
-      const f = [d.pop(), d.pop(), d.pop()];
-      setBoard(f); setDeck(d); setStreet("flop");
-    } else if(street === "flop"){
-      setBoard(prev=>[...prev, d.pop()]); setDeck(d); setStreet("turn");
-    } else if(street === "turn"){
-      setBoard(prev=>[...prev, d.pop()]); setDeck(d); setStreet("river");
-    }
-  }
-
-  const evaluation = useMemo(()=>{
-    if(hole.length===2){
-      const cards = [...hole, ...board];
-      return evaluate7(cards);
-    }
-    return null;
-  }, [hole, board]);
-
-  const reco = useMemo(()=>{
-    if(hole.length<2) return null;
-    if(street === "preflop") return recommendAction("preflop", hole, []);
-    if(street === "flop") return recommendAction("flop", hole, board);
-    if(street === "turn") return recommendAction("turn", hole, board);
-    if(street === "river") return recommendAction("river", hole, board);
-    return null;
-  }, [street, hole, board]);
-
-  return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-green-50 via-green-100 to-green-200 p-4 md:p-8 text-slate-800">
-      <div className="max-w-5xl mx-auto space-y-4 md:space-y-6">
-        <header className="flex items-center justify-between">
-        <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Poker Loca</h1>
-          <nav className="flex gap-2">
-            {[
-              {id:"basics", label:"Basics"},
-              {id:"hands", label:"Hand Rankings"},
-              {id:"trainer", label:"Interactive Trainer"}
-            ].map(t=> (
-              <button key={t.id} onClick={()=>setTab(t.id)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border border-slate-300 shadow-sm ${
-                  tab === t.id
-                    ? "bg-green-700 text-white"
-                    : "bg-white text-slate-900 hover:bg-green-50"
-                }`}>
-                {t.label}
-              </button>
-            ))}
-          </nav>
-        </header>
-
-        {tab==="basics" && (
-          <Section title="Texas Hold'em in One Screen">
-            <ol className="list-decimal ml-6 space-y-2 text-slate-700">
-              <li>You get <b>2 hidden cards</b> (hole cards).</li>
-              <li>Table shows <b>5 shared cards</b> in 3 rounds: Flop (3), Turn (1), River (1).</li>
-              <li>Make the <b>best 5-card hand</b> from your 2 + the 5 on the table.</li>
-              <li>On your turn: <Pill>Fold</Pill>, <Pill>Check</Pill>, <Pill>Call</Pill>, or <Pill>Bet/Raise</Pill>.</li>
-              <li>Win by everyone folding or having the best hand at showdown.</li>
-            </ol>
-            <div className="mt-4 text-sm text-slate-500">Tip: If you hit the flop (pair or better), bet ~½ the pot. If you miss, check/fold. Draws? Call small, fold to big bets.</div>
-          </Section>
-        )}
-
-        {tab==="hands" && (
-          <Section title="Hand Rankings (best → worst)">
-            <div className="grid md:grid-cols-2 gap-4">
-              {["Royal Flush","Straight Flush","Four of a Kind","Full House","Flush","Straight","Three of a Kind","Two Pair","One Pair","High Card"].map((h,i)=> (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-xl border bg-white">
-                  <div className="w-8 h-8 rounded-full bg-slate-900 text-white grid place-items-center text-xs font-semibold">{i+1}</div>
-                  <div className="font-medium">{h}</div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 text-sm text-slate-600">Memorize this order. Ties use kickers (highest side cards).</div>
-          </Section>
-        )}
-
-        {tab==="trainer" && (
-          <div className="grid lg:grid-cols-5 gap-4">
-            <div className="lg:col-span-3 space-y-4">
-              <Section title="Table">
-                {hole.length<2 ? (
-                  <div className="flex flex-col items-center py-10 gap-4">
-                    <div className="text-slate-600">Click below to deal a hand.</div>
-                    <button onClick={freshHand} className="px-4 py-2 rounded-xl bg-green-600 text-white font-semibold shadow hover:bg-green-700">Deal Hand</button>
-                  </div>
-                ):(
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between text-slate-600 text-sm">
-                      <div className="flex items-center gap-2">Street: <Pill>{street.toUpperCase()}</Pill></div>
-                      <div className="flex items-center gap-2">Evaluation: <Pill>{evaluation?.name}</Pill></div>
-                    </div>
-                    <div className="flex items-center justify-center gap-3">
-                      <Card c={hole[0]}/>
-                      <Card c={hole[1]}/>
-                      <span className="text-slate-400">•</span>
-                      {board.map((c,idx)=>(<Card key={idx} c={c}/>))}
-                      {Array.from({length: 5-board.length}).map((_,i)=>(<div key={i} className="w-12 h-16 rounded-2xl border-dashed border-2 border-slate-300 bg-white/30"/>))}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      {street!=="river" && (
-                        <button onClick={nextStreet} className="px-3 py-2 rounded-xl bg-green-700 text-white text-sm font-semibold shadow hover:bg-green-800">Reveal Next Card</button>
-                      )}
-                      <button onClick={freshHand} className="px-3 py-2 rounded-xl bg-white border text-sm font-semibold hover:bg-slate-50">New Hand</button>
-                    </div>
-                  </div>
-                )}
-              </Section>
-
-              {hole.length===2 && (
-                <Section title="Coach Says" right={<Pill>{reco?.move}</Pill>}>
-                  <div className="text-slate-700 leading-relaxed">
-                    {reco?.reason}
-                  </div>
-                  <div className="mt-3 text-xs text-slate-500">Rule of thumb: Bet ~½ pot when it says “Bet”. “Check/Call Small” = call small bets only.</div>
-                </Section>
-              )}
-            </div>
-
-            <div className="lg:col-span-2 space-y-4">
-              <Section title="Quick Tips">
-                <ul className="space-y-2 text-slate-700 text-sm">
-                  <li>Play <b>tight</b> preflop: big cards, pairs, suited connectors.</li>
-                  <li>Hit the flop? <b>Bet small/medium</b>. Missed? <b>Check/Fold</b>.</li>
-                  <li>Draws (1 card from straight/flush): <b>Call small</b>, fold to big bets.</li>
-                  <li>Acting later = more info → you can play a bit looser.</li>
-                </ul>
-              </Section>
-              <Section title="Mini Quiz: Which Wins?">
-                <MiniQuiz/>
-              </Section>
-            </div>
-          </div>
-        )}
-
-        <footer className="pt-2 text-center text-xs text-slate-500">
-          Built for learning. No gambling here. Just vibes and probabilities.
-        </footer>
+      <div>
+        <div className="font-semibold text-lg">{title}</div>
+        <p className="text-xs text-slate-300">{description}</p>
       </div>
-    </div>
+    </motion.div>
   );
-}
 
-function MiniQuiz(){
-  // curated examples so ties don’t happen
-  const examples = [
-    { a:["A♠","A♦","A♥","K♣","K♦"], b:["K♠","K♥","K♦","K♣","2♠"], correct:"b", why:"Four of a Kind beats Full House." },
-    { a:["9♠","T♠","J♠","Q♠","K♠"], b:["2♥","2♦","2♣","2♠","A♦"], correct:"a", why:"Straight Flush beats Four of a Kind." },
-    { a:["2♣","2♦","Q♥","Q♣","A♠"], b:["3♣","3♦","K♥","7♣","6♦"], correct:"a", why:"Two Pair beats One Pair." },
+  const rankingData = [
+    { title: 'Royal Flush', cards: ['A♠','K♠','Q♠','J♠','10♠'], desc: 'Ace-high straight flush. The absolute nuts—only possible in one suit.' },
+    { title: 'Straight Flush', cards: ['5♥','6♥','7♥','8♥','9♥'], desc: 'Five in a row, same suit. Higher top card beats a lower one.' },
+    { title: 'Four of a Kind', cards: ['9♣','9♦','9♥','9♠','K♦'], desc: 'All four cards of the same rank plus any fifth card (kicker).' },
+    { title: 'Full House', cards: ['Q♣','Q♦','Q♠','5♥','5♣'], desc: 'Three of one rank + two of another. Higher trips decide ties.' },
+    { title: 'Flush', cards: ['2♦','7♦','9♦','J♦','K♦'], desc: 'Any five cards of the same suit, not in sequence. Compare highest cards.' },
+    { title: 'Straight', cards: ['4♣','5♦','6♠','7♥','8♠'], desc: 'Five in a row, mixed suits. A2345 (wheel) is the lowest straight.' },
+    { title: 'Three of a Kind', cards: ['7♣','7♦','7♠','K♥','2♣'], desc: 'Three cards of the same rank plus two kickers.' },
+    { title: 'Two Pair', cards: ['J♣','J♦','3♠','3♥','9♦'], desc: 'Two different pairs plus a kicker. Highest pair first, then second, then kicker.' },
+    { title: 'One Pair', cards: ['A♣','A♦','4♠','8♥','9♣'], desc: 'Two cards of the same rank plus three kickers. Kickers break ties.' },
+    { title: 'High Card', cards: ['2♣','7♦','9♥','J♠','K♣'], desc: 'No combination. Compare highest card, then next highest, and so on.' }
   ];
-  const [idx, setIdx] = useState(0);
-  const [choice, setChoice] = useState(null);
-  const ex = examples[idx];
-  function pick(c){ setChoice(c); }
-  function next(){ setChoice(null); setIdx((i)=>(i+1)%examples.length); }
 
+  // ---------------- RENDER ----------------
   return (
-    <div>
-      <div className="text-sm text-slate-600 mb-2">Pick the stronger 5-card hand:</div>
-      <div className="grid grid-cols-2 gap-2">
-        <button onClick={()=>pick("a")} className={`p-2 rounded-xl border bg-white text-left hover:bg-slate-50 ${choice==="a"?"ring-2 ring-green-500":""}`}>
-          <HandRow codes={ex.a} label="Hand A"/>
-        </button>
-        <button onClick={()=>pick("b")} className={`p-2 rounded-xl border bg-white text-left hover:bg-slate-50 ${choice==="b"?"ring-2 ring-emerald-500":""}`}>
-          <HandRow codes={ex.b} label="Hand B"/>
-        </button>
+    <div className="min-h-screen flex flex-col items-center bg-gradient-to-b from-green-800 to-green-900 text-white p-6">
+      <h1 className="text-5xl font-extrabold mb-6 drop-shadow-lg tracking-wide">PokerLoca 🃏</h1>
+
+      {/* Navigation Menu */}
+      <div className="flex flex-wrap gap-3 mb-10">
+        <button onClick={() => setPage("trainer")} className={`px-4 py-2 rounded-full font-bold shadow-lg ${page==='trainer' ? 'bg-yellow-500 text-black' : 'bg-black/40'}`}>Trainer</button>
+        <button onClick={() => setPage("basics")} className={`px-4 py-2 rounded-full font-bold shadow-lg ${page==='basics' ? 'bg-yellow-500 text-black' : 'bg-black/40'}`}>Basics</button>
+        <button onClick={() => setPage("rankings")} className={`px-4 py-2 rounded-full font-bold shadow-lg ${page==='rankings' ? 'bg-yellow-500 text-black' : 'bg-black/40'}`}>Hand Rankings</button>
       </div>
-      {choice && (
-        <div className="mt-2">
-          {choice===ex.correct ? (
-            <div className="text-green-700 text-sm font-medium">Correct! {ex.why}</div>
-          ):(
-            <div className="text-rose-700 text-sm font-medium">Not quite. {ex.why}</div>
-          )}
-          <button onClick={next} className="mt-2 px-3 py-1.5 rounded-lg bg-slate-900 text-white text-sm">Next</button>
+
+      {page === "trainer" && (
+        <>
+          {/* Player hand */}
+          <div className="flex space-x-4 mb-6">
+            {hand.map((c,i) => <Card card={c} key={i} index={i} />)}
+          </div>
+
+          {/* Board */}
+          <div className="flex space-x-4 mb-6">
+            {board.map((c,i) => <Card card={c} key={i} index={i} />)}
+          </div>
+
+          {/* Buttons */}
+          <div className="flex flex-wrap gap-3 mb-6 justify-center">
+            {step === "preflop" && (
+              <button onClick={dealHand} className="bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 px-6 rounded-full shadow-lg transform hover:scale-105 transition">🎲 Deal Hand</button>
+            )}
+            {step === "flop" && (
+              <button onClick={dealFlop} className="bg-red-500 hover:bg-red-600 font-bold py-3 px-6 rounded-full shadow-lg transform hover:scale-105 transition">🔥 Deal Flop</button>
+            )}
+            {step === "turn" && (
+              <button onClick={dealTurn} className="bg-blue-500 hover:bg-blue-600 font-bold py-3 px-6 rounded-full shadow-lg transform hover:scale-105 transition">➡️ Deal Turn</button>
+            )}
+            {step === "river" && (
+              <button onClick={dealRiver} className="bg-purple-500 hover:bg-purple-600 font-bold py-3 px-6 rounded-full shadow-lg transform hover:scale-105 transition">🏁 Deal River</button>
+            )}
+            {step === "showdown" && (
+              <button onClick={dealHand} className="bg-green-500 hover:bg-green-600 font-bold py-3 px-6 rounded-full shadow-lg transform hover:scale-105 transition">🔄 New Hand</button>
+            )}
+          </div>
+
+          {/* Coach message */}
+          <motion.div
+            key={message}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="text-xl font-semibold mt-4 bg-black/40 rounded-xl px-6 py-4 shadow-inner max-w-lg text-center"
+          >
+            {message}
+          </motion.div>
+        </>
+      )}
+
+      {page === "basics" && (
+        <div className="mt-6 bg-black/30 rounded-2xl p-6 shadow-lg max-w-2xl">
+          <h2 className="text-2xl font-bold mb-4">📘 Poker Basics</h2>
+          <p className="mb-2">• Each player gets 2 hole cards. Use them + the 5 community cards to make the best 5-card hand.</p>
+          <p className="mb-2">• Betting happens before the flop, after the flop, after the turn, and after the river.</p>
+          <p className="mb-2">• If more than one player is left after the river → showdown.</p>
         </div>
       )}
-    </div>
-  );
-}
 
-function HandRow({codes, label}){
-  const cs = codes.map(code=>({ r: code[0]==="T"?"10":code[0], s: code.slice(1) }));
-  return (
-    <div>
-      <div className="mb-1 text-xs uppercase tracking-wide text-slate-500">{label}</div>
-      <div className="flex gap-1">
-        {cs.map((c,i)=>(<Card key={i} c={{r:c.r.toString(), s:c.s}}/>))}
-      </div>
+      {page === "rankings" && (
+        <div className="mt-6 bg-black/30 rounded-2xl p-6 shadow-lg w-full max-w-3xl">
+          <h2 className="text-2xl font-bold mb-2">🏆 Hand Rankings (Best → Worst)</h2>
+          <div className="space-y-3">
+            {rankingData.map((r, idx) => (
+              <RankingRow key={idx} title={r.title} cards={r.cards} description={r.desc} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

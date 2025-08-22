@@ -10,7 +10,7 @@ An interactive, beginner-friendly **Texas Hold’em trainer**. Learn the basics,
 - **Mini Quiz**: “Which hand wins?” quick checks.
 
 ## Tech
-- React (Vite)
+- React
 - Tailwind CSS **v4**
 - PostCSS (`@tailwindcss/postcss` plugin)
 
