@@ -22,7 +22,6 @@ export default function PokerLoca() {
   }
 
   const newDeck = () => {
-    // Shuffled deck for gameplay
     const deck = makeOrderedDeck();
     return deck.sort(() => Math.random() - 0.5);
   };
@@ -108,11 +107,23 @@ export default function PokerLoca() {
     <div className="min-h-screen flex flex-col items-center bg-gradient-to-b from-green-800 to-green-900 text-white p-6">
       <h1 className="text-5xl font-extrabold mb-6 drop-shadow-lg tracking-wide">PokerLoca 🃏</h1>
 
-      {/* Navigation Menu */}
-      <div className="flex flex-wrap gap-3 mb-10">
-        <button onClick={() => setPage("trainer")} className={`px-4 py-2 rounded-full font-bold shadow-lg ${page==='trainer' ? 'bg-yellow-500 text-black' : 'bg-black/40'}`}>Trainer</button>
-        <button onClick={() => setPage("basics")} className={`px-4 py-2 rounded-full font-bold shadow-lg ${page==='basics' ? 'bg-yellow-500 text-black' : 'bg-black/40'}`}>Basics</button>
-        <button onClick={() => setPage("rankings")} className={`px-4 py-2 rounded-full font-bold shadow-lg ${page==='rankings' ? 'bg-yellow-500 text-black' : 'bg-black/40'}`}>Hand Rankings</button>
+      {/* Navigation Menu as poker chips */}
+      <div className="flex gap-6 mb-12">
+        {[
+          { key: 'trainer', label: '🎲 Trainer', color: 'bg-red-500' },
+          { key: 'basics', label: '📘 Basics', color: 'bg-blue-500' },
+          { key: 'rankings', label: '🏆 Rankings', color: 'bg-green-500' }
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setPage(tab.key)}
+            className={`w-20 h-20 rounded-full flex items-center justify-center font-bold text-center text-sm shadow-xl border-4 border-white/60 transition transform hover:scale-110 ${
+              page === tab.key ? tab.color + ' text-black' : 'bg-black/40 text-white'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {page === "trainer" && (
